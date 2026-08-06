@@ -1,0 +1,12 @@
+[providers]
+providers = ["php", "node"]
+
+[phases.setup]
+nixPkgs = ["php82", "composer", "nodejs_20"]
+
+[phases.build]
+cmds = [
+  "composer install --no-interaction --prefer-dist --optimize-autoloader",
+  "npm install --include=dev",
+  "npm run build"
+]
