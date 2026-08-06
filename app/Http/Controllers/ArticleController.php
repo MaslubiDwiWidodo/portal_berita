@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Category;
 use App\Models\Article;
+use Illuminate\Validation\Rule;
 
 class ArticleController extends Controller
 {
@@ -14,7 +15,7 @@ class ArticleController extends Controller
     // ==========================
     public function index()
     {
-        $categories = Category::all();
+        $categories = Category::orderBy('category_name')->get();
 
         return view('articles.index', compact('categories'));
     }
@@ -25,11 +26,11 @@ class ArticleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'title' => 'required',
-            'content' => 'required',
-            'category_id' => 'required',
-            'status' => 'required',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png|max:2048'
+            'title'       => 'required|string|max:255',
+            'content'     => 'required|string',
+            'category_id' => 'required|exists:categories,id',
+            'status'      => ['required', Rule::in(['draft', 'published'])],
+            'image'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048'
         ]);
 
         $imageName = null;
@@ -39,12 +40,12 @@ class ArticleController extends Controller
         }
 
         Article::create([
-            'title' => $request->title,
-            'content' => $request->content,
-            'status' => $request->status,
+            'title'       => $request->title,
+            'content'     => $request->content,
+            'status'      => $request->status,
             'category_id' => $request->category_id,
-            'user_id' => auth()->id(),
-            'image' => $imageName,
+            'user_id'     => auth()->id(),
+            'image'       => $imageName,
         ]);
 
         return redirect()->route('articles.list')
@@ -56,7 +57,7 @@ class ArticleController extends Controller
     // ==========================
     public function list()
     {
-        $articles = Article::with('category')
+        $articles = Article::with(['category', 'user'])
             ->latest()
             ->get();
 
@@ -69,8 +70,7 @@ class ArticleController extends Controller
     public function edit($id)
     {
         $article = Article::findOrFail($id);
-
-        $categories = Category::all();
+        $categories = Category::orderBy('category_name')->get();
 
         return view('articles.edit', compact('article', 'categories'));
     }
@@ -82,11 +82,18 @@ class ArticleController extends Controller
     {
         $article = Article::findOrFail($id);
 
+        $request->validate([
+            'title'       => 'required|string|max:255',
+            'content'     => 'required|string',
+            'category_id' => 'required|exists:categories,id',
+            'status'      => ['required', Rule::in(['draft', 'published'])],
+            'image'       => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048'
+        ]);
+
         $imageName = $article->image;
 
         if ($request->hasFile('image')) {
-
-            if ($article->image) {
+            if ($article->image && Storage::disk('public')->exists($article->image)) {
                 Storage::disk('public')->delete($article->image);
             }
 
@@ -94,11 +101,11 @@ class ArticleController extends Controller
         }
 
         $article->update([
-            'title' => $request->title,
-            'content' => $request->content,
-            'status' => $request->status,
+            'title'       => $request->title,
+            'content'     => $request->content,
+            'status'      => $request->status,
             'category_id' => $request->category_id,
-            'image' => $imageName,
+            'image'       => $imageName,
         ]);
 
         return redirect()->route('articles.list')
@@ -112,7 +119,7 @@ class ArticleController extends Controller
     {
         $article = Article::findOrFail($id);
 
-        if ($article->image) {
+        if ($article->image && Storage::disk('public')->exists($article->image)) {
             Storage::disk('public')->delete($article->image);
         }
 
@@ -127,25 +134,22 @@ class ArticleController extends Controller
     // ==========================
     public function website(Request $request)
     {
-        $search = $request->search;
-        $category = $request->category;
+        $search = $request->input('search');
+        $category = $request->input('category');
 
         $categories = Category::orderBy('category_name')->get();
 
-        $articles = Article::with('category')
+        $articles = Article::with(['category', 'user'])
             ->where('status', 'published')
-
-            ->when($search, function ($query) use ($search) {
+            ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('title', 'like', "%{$search}%")
                       ->orWhere('content', 'like', "%{$search}%");
                 });
             })
-
-            ->when($category, function ($query) use ($category) {
+            ->when($category, function ($query, $category) {
                 $query->where('category_id', $category);
             })
-
             ->latest()
             ->paginate(6)
             ->withQueryString();
@@ -163,10 +167,10 @@ class ArticleController extends Controller
     // ==========================
     public function show($id)
     {
-        $article = Article::with('category')
+        $article = Article::with(['category', 'user'])
             ->findOrFail($id);
 
-        $relatedArticles = Article::with('category')
+        $relatedArticles = Article::with(['category', 'user'])
             ->where('status', 'published')
             ->where('category_id', $article->category_id)
             ->where('id', '!=', $article->id)

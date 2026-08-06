@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -13,7 +14,7 @@ class UserController extends Controller
     // =========================
     private function checkAdmin()
     {
-        if (auth()->user()->role != 'admin') {
+        if (!auth()->check() || auth()->user()->role !== 'admin') {
             abort(403, 'Anda tidak memiliki hak akses.');
         }
     }
@@ -25,7 +26,7 @@ class UserController extends Controller
     {
         $this->checkAdmin();
 
-        $users = User::all();
+        $users = User::latest()->get();
 
         return view('users.index', compact('users'));
     }
@@ -47,6 +48,13 @@ class UserController extends Controller
     {
         $this->checkAdmin();
 
+        $request->validate([
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'role'     => ['required', Rule::in(['admin', 'editor', 'penulis'])],
+            'password' => ['required', 'string', 'min:8'],
+        ]);
+
         User::create([
             'name'     => $request->name,
             'email'    => $request->email,
@@ -54,7 +62,7 @@ class UserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
-        return redirect()->route('users');
+        return redirect()->route('users')->with('success', 'Pengguna berhasil ditambahkan.');
     }
 
     // =========================
@@ -78,13 +86,26 @@ class UserController extends Controller
 
         $user = User::findOrFail($id);
 
-        $user->update([
+        $request->validate([
+            'name'  => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
+            'role'  => ['required', Rule::in(['admin', 'editor', 'penulis'])],
+            'password' => ['nullable', 'string', 'min:8'],
+        ]);
+
+        $data = [
             'name'  => $request->name,
             'email' => $request->email,
             'role'  => $request->role,
-        ]);
+        ];
 
-        return redirect()->route('users');
+        if ($request->filled('password')) {
+            $data['password'] = Hash::make($request->password);
+        }
+
+        $user->update($data);
+
+        return redirect()->route('users')->with('success', 'Data pengguna berhasil diperbarui.');
     }
 
     // =========================
@@ -94,10 +115,13 @@ class UserController extends Controller
     {
         $this->checkAdmin();
 
-        $user = User::findOrFail($id);
+        if (auth()->id() == $id) {
+            return redirect()->route('users')->with('error', 'Anda tidak dapat menghapus akun sendiri.');
+        }
 
+        $user = User::findOrFail($id);
         $user->delete();
 
-        return redirect()->route('users');
+        return redirect()->route('users')->with('success', 'Pengguna berhasil dihapus.');
     }
 }

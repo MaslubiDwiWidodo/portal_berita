@@ -12,7 +12,7 @@ class CategoryController extends Controller
     // =========================
     private function checkAccess()
     {
-        if (!in_array(auth()->user()->role, ['admin', 'editor'])) {
+        if (!auth()->check() || !in_array(auth()->user()->role, ['admin', 'editor'])) {
             abort(403, 'Anda tidak memiliki hak akses.');
         }
     }
@@ -24,7 +24,7 @@ class CategoryController extends Controller
     {
         $this->checkAccess();
 
-        $categories = Category::all();
+        $categories = Category::withCount('articles')->latest()->get();
 
         return view('categories.index', compact('categories'));
     }
@@ -37,11 +37,13 @@ class CategoryController extends Controller
         $this->checkAccess();
 
         $request->validate([
-            'category_name' => 'required|max:100'
+            'category_name' => 'required|string|max:100|unique:categories,category_name'
+        ], [
+            'category_name.unique' => 'Nama kategori sudah ada.'
         ]);
 
         Category::create([
-            'category_name' => $request->category_name
+            'category_name' => trim($request->category_name)
         ]);
 
         return redirect()->back()->with('success', 'Kategori berhasil ditambahkan.');
@@ -54,7 +56,13 @@ class CategoryController extends Controller
     {
         $this->checkAccess();
 
-        Category::findOrFail($id)->delete();
+        $category = Category::findOrFail($id);
+
+        if ($category->articles()->count() > 0) {
+            return redirect()->back()->with('error', 'Kategori tidak dapat dihapus karena masih memiliki artikel.');
+        }
+
+        $category->delete();
 
         return redirect()->back()->with('success', 'Kategori berhasil dihapus.');
     }

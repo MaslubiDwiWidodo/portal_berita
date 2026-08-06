@@ -3,23 +3,35 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Category;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Seed default Admin User
+        if (User::where('email', 'admin@gmail.com')->doesntExist()) {
+            User::create([
+                'name'     => 'Administrator',
+                'email'    => 'admin@gmail.com',
+                'password' => Hash::make('password'),
+                'role'     => 'admin',
+            ]);
+        }
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Seed default Categories
+        if (Category::count() === 0) {
+            $defaultCategories = ['Teknologi', 'Politik', 'Olahraga', 'Hiburan', 'Edukasi'];
+            foreach ($defaultCategories as $cat) {
+                Category::create([
+                    'category_name' => $cat,
+                ]);
+            }
+        }
     }
 }
